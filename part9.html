@@ -1,0 +1,287 @@
+<!doctype html> 
+<html lang="en"> 
+<head> 
+	<meta charset="UTF-8" />
+    <title>Phaser - Making your first game, part 9</title>
+    <script src="//cdn.jsdelivr.net/phaser/2.6.2/phaser.min.js"></script>
+    <style type="text/css">
+        body {
+            margin: 0;
+        }
+    </style>
+</head>
+<body>
+
+<script type="text/javascript">
+
+var game = new Phaser.Game(800, 600, Phaser.CANVAS, 'phaser-example', { preload: preload, create: create, update: update, render: render });
+var player;
+var weapon;
+var player_life = 100;
+var enemy;
+var enemy_weapon;
+var enemy_life = 200;
+var enemyLifeText;
+var platforms;
+var background;
+var cursors;
+var stars;
+var score = 0;
+var counter = 0;
+var scoreText;
+var lifeText;
+var winText;
+var random_fire;
+var fireButton;
+
+function preload() {
+    game.load.image('sky', 'assets/sky.png');
+    game.load.image('ground', 'assets/platform.png');
+    game.load.image('star', 'assets/star.png');
+    game.load.image('bullet', 'assets/diamond.png');
+
+    game.load.spritesheet('dude', 'assets/dude.png', 32, 48);
+    game.load.spritesheet('baddie', 'assets/baddie.png', 32, 32);
+
+}
+
+function create() {
+
+    //  A simple background for our game
+
+    background = game.add.tileSprite(0,0,800,600,'sky');
+    background.fixedToCamera = true;
+
+    //  The platforms group contains the ground and the 2 ledges we can jump on
+    platforms = game.add.group();
+
+    //  We will enable physics for any object that is created in this group
+    platforms.enableBody = true;
+
+    // Here we create the ground.
+    var ground = platforms.create(0, game.world.height - 64, 'ground');
+
+    //  Scale it to fit the width of the game (the original sprite is 400x32 in size)
+    ground.scale.setTo(5, 2);
+
+    //  This stops it from falling away when you jump on it
+    ground.body.immovable = true;
+
+    //  Now let's create two ledges
+/*    var ledge = platforms.create(400, 400, 'ground');
+    ledge.body.immovable = true;
+
+    ledge = platforms.create(-150, 250, 'ground');
+    ledge.body.immovable = true;*/
+
+    var ledge = platforms.create(500, 100, 'ground');
+    ledge.body.immovable = true;
+
+
+    // Add an enemy
+    enemy = game.add.sprite(750, game.world.height - 100, 'baddie');
+    game.physics.arcade.enable(enemy);
+    enemy.body.bounce.y = 0.2;
+    enemy.body.gravity.y = 300;
+    enemy.body.collideWorldBounds = true;
+    enemy.animations.add('updown', [0, 1], 5, true);
+
+    // The player and its settings
+    player = game.add.sprite(32, game.world.height - 150, 'dude');
+
+    //  We need to enable physics on the player
+    game.physics.arcade.enable(player);
+
+    //  Player physics properties. Give the little guy a slight bounce.
+    player.body.bounce.y = 0.2;
+    player.body.gravity.y = 300;
+    player.body.collideWorldBounds = true;
+
+    //  Our two animations, walking left and right.
+    player.animations.add('left', [0, 1, 2, 3], 10, true);
+    player.animations.add('right', [5, 6, 7, 8], 10, true);
+
+    //  Finally some stars to collect
+    stars = game.add.group();
+
+    //  We will enable physics for any star that is created in this group
+    stars.enableBody = true;
+
+    //  Here we'll create 12 of them evenly spaced apart
+    for (var i = 0; i < 12; i++)
+    {
+        //  Create a star inside of the 'stars' group
+        var star = stars.create(i * 70, 0, 'star');
+
+        //  Let gravity do its thing
+        star.body.gravity.y = 300;
+
+        //  This just gives each star a slightly random bounce value
+        star.body.bounce.y = 0.7 + Math.random() * 0.2;
+    }
+
+    //  We're going to be using physics, so enable the Arcade Physics system
+    game.physics.startSystem(Phaser.Physics.ARCADE);
+
+    weapon = game.add.weapon(40, 'bullet');
+    enemy_weapon = game.add.weapon(40, 'bullet');
+
+    //  The speed at which the bullet is fired
+    weapon.bulletSpeed = 400;
+    enemy_weapon.bulletSpeed = 400;
+
+    //  Speed-up the rate of fire, allowing them to shoot 1 bullet every 60ms
+    weapon.fireRate = 500;
+    enemy_weapon.fireRate = 500;
+
+    enemyLifeText = game.add.text(600, 48, 'Enemy: 100', { fontSize: '32px', fill: '#000' });
+
+    var tween = game.add.tween(enemy).to( { y: '-200' }, 1000, Phaser.Easing.Quintic.InOut , true, 0, -1 , true);
+
+    //  The score
+    scoreText = game.add.text(16, 16, 'score: 0', { fontSize: '32px', fill: '#000' });
+    //  Player Life
+    lifeText = game.add.text(16, 48, 'Life: 100', { fontSize: '32px', fill: '#000' });
+
+    //  Our controls.
+    cursors = game.input.keyboard.createCursorKeys();
+
+    fireButton = this.input.keyboard.addKey(Phaser.KeyCode.SPACEBAR);
+
+    weapon.trackSprite(player, 0, 0);
+    enemy_weapon.trackSprite(enemy, 0, 0);
+
+    weapon.fireAngle = 0;
+    enemy_weapon.fireAngle = 180;
+
+    // Add the camera
+    game.camera.follow(player);
+
+    // Set the boundaries
+    game.world.setBounds(0, 0, 800, 600 );
+
+    // Add timer for enemy
+    game.time.events.loop(Phaser.Timer.SECOND / 6, fireEnemyWeapon, this);
+    
+}
+
+function update() {
+
+    //  Collide the player and the stars with the platforms
+    var hitPlatform = game.physics.arcade.collide(player, platforms);
+    game.physics.arcade.collide(stars, platforms);
+    game.physics.arcade.collide(enemy, platforms);
+
+    //  Checks to see if the player overlaps with any of the stars, if he does call the collectStar function
+    game.physics.arcade.overlap(player, stars, collectStar, null, this);
+
+    // Bullet damage
+    game.physics.arcade.overlap(player, enemy_weapon.bullets, playerHit, null, this);
+    game.physics.arcade.overlap(enemy, weapon.bullets, enemyHit, null, this);
+
+    //  Reset the players velocity (movement)
+    player.body.velocity.x = 0;
+
+    enemy.body.velocity.y = 120;
+
+
+
+    if (cursors.left.isDown)
+    {
+        //  Move to the left
+        player.body.velocity.x = -150;
+
+        // Set direction of bullet
+        weapon.fireAngle = 180;
+
+        player.animations.play('left');
+    }
+    else if (cursors.right.isDown)
+    {
+        //  Move to the right
+        player.body.velocity.x = 150;
+
+        // Set direction of bullet.
+        weapon.fireAngle = 0;
+
+        player.animations.play('right');
+    }
+    else
+    {
+        //  Stand still
+        player.animations.stop();
+
+        player.frame = 4;
+    }
+
+    //  Allow the player to jump if they are touching the ground.
+    if (cursors.up.isDown && player.body.touching.down && hitPlatform)
+    {
+        player.body.velocity.y = -450;
+    }
+
+    if (fireButton.isDown)
+    {
+        weapon.fire();
+    }
+
+}
+
+function collectStar (player, star) {
+
+    // Removes the star from the screen
+    star.kill();
+
+    //  Add and update the score
+    score += 10;
+    scoreText.text = 'Score: ' + score;
+
+}
+
+function playerHit(player, bullet){
+
+    // Removes the bullet from the screen
+    bullet.kill();
+
+    player_life -= 10;
+    lifeText.text = 'Life: ' + player_life;
+
+    if(player_life === 0){
+        game.paused = true;
+        winText = game.add.text(100, 100, 'Loser!!!!.......', { fontSize: '32px', fill: '#000' });
+    }
+
+}
+
+function enemyHit(enemy, bullet){
+
+    // Removes the bullet from the screen
+    bullet.kill();
+
+    enemy_life -= 10;
+    enemyLifeText.text = 'Enemy: ' + enemy_life;
+
+    if(enemy_life === 0){
+        game.paused = true;
+        winText = game.add.text(100, 100, 'You Win!!! Legend....', { fontSize: '32px', fill: '#000' });
+    }
+
+}
+
+function fireEnemyWeapon(){
+    random_fire = Math.random();
+    if(random_fire < 0.5){
+        enemy_weapon.fire();
+    }
+}
+
+function render() {
+
+    weapon.debug();
+
+}
+
+</script>
+
+</body>
+</html>
